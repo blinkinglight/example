@@ -10,3 +10,5 @@ or just
 ``` 
 go run .
 ```
+
+and open http://localhost:9999
