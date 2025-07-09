@@ -33,6 +33,23 @@ func main() {
 		panic(err)
 	}
 
+	sendCommand := func(action, input string) error {
+		cmd := &Command{
+			Action: action,
+			Input:  input,
+		}
+		data, err := json.Marshal(cmd)
+		if err != nil {
+			slog.Error("Failed to marshal command", "error", err)
+			return err
+		}
+		if err := nc.Publish("data.pipe", data); err != nil {
+			slog.Error("Failed to publish command", "error", err)
+			return err
+		}
+		return nil
+	}
+
 	router := chi.NewMux()
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +67,6 @@ func main() {
 			pipe <- cmd
 		})
 		if err != nil {
-			slog.Error("Failed to subscribe to data.pipe", "error", err)
 			sse.PatchElementTempl(templates.ToastError("Failed to subscribe to data.pipe"))
 			return
 		}
@@ -80,58 +96,21 @@ func main() {
 			Input string `json:"input"`
 		}
 		if err := datastar.ReadSignals(r, &signals); err != nil {
-			sse := datastar.NewSSE(w, r)
-			sse.PatchElementTempl(templates.ToastError("Failed to read signals"))
-			return
-		}
-		if signals.Input == "" {
-			sse := datastar.NewSSE(w, r)
-			sse.PatchElementTempl(templates.ToastError("Input cannot be empty"))
-			return
-		}
-		cmd := &Command{
-			Action: "update-and-render-list",
-			Input:  signals.Input,
-		}
-
-		data, err := json.Marshal(cmd)
-		if err != nil {
-			slog.Error("Failed to marshal command", "error", err)
-			sse := datastar.NewSSE(w, r)
-			sse.PatchElementTempl(templates.ToastError("Failed to process command"))
-			return
-		}
-
-		if err := nc.Publish("data.pipe", data); err != nil {
-			slog.Error("Failed to publish command", "error", err)
-			sse := datastar.NewSSE(w, r)
-			sse.PatchElementTempl(templates.ToastError("Failed to publish command"))
+			sendCommand("show-error", "Failed to read signals")
 			return
 		}
 		datastar.NewSSE(w, r)
+
+		if signals.Input == "" {
+			sendCommand("show-error", "Input cannot be empty")
+			return
+		}
+		sendCommand("update-and-render-list", signals.Input)
 	})
 
 	router.Post("/error", func(w http.ResponseWriter, r *http.Request) {
-		cmd := &Command{
-			Action: "show-error",
-			Input:  "This is an error message",
-		}
-		data, err := json.Marshal(cmd)
-		if err != nil {
-			slog.Error("Failed to marshal error command", "error", err)
-			sse := datastar.NewSSE(w, r)
-			sse.PatchElementTempl(templates.ToastError("Failed to process error command"))
-			return
-		}
-
-		if err := nc.Publish("data.pipe", data); err != nil {
-			slog.Error("Failed to publish error command", "error", err)
-			sse := datastar.NewSSE(w, r)
-			sse.PatchElementTempl(templates.ToastError("Failed to publish error command"))
-			return
-		}
 		datastar.NewSSE(w, r)
-
+		sendCommand("show-error", "This is a test error message")
 	})
 
 	slog.Info("Starting server on :9999")
