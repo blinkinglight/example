@@ -2,6 +2,7 @@ package templates
 
 import "fmt"
 import "time"
+import "github.com/nats-io/nuid"
 
 type Page struct {
 	List []string
@@ -25,7 +26,7 @@ templ LaytouMain() {
 				animation: toast-fadeout 3s forwards;
 			}
 	</style>
-		<body>
+		<body data-signals={ fmt.Sprintf(`{ "correlationID": "%s" }`, nuid.Next() ) }>
 			{ children... }
 			<div id="toast"></div>
 		</body>
