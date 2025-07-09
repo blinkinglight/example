@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/blinkinglight/example/templates"
 	"github.com/delaneyj/toolbelt/embeddednats"
@@ -18,6 +19,8 @@ type Command struct {
 	Action string `json:"action"`
 	Input  string `json:"input"`
 }
+
+var sessions int64
 
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
@@ -99,7 +102,17 @@ func main() {
 
 		defer sub.Unsubscribe()
 		defer subPersonal.Unsubscribe()
+
+		atomic.AddInt64(&sessions, 1)
+		sse.PatchElementTempl(templates.ActiveUsers(atomic.LoadInt64(&sessions)))
+		sendCommand("", "online-users", fmt.Sprintf("%d", atomic.LoadInt64(&sessions)))
+		defer func() {
+			atomic.AddInt64(&sessions, -1)
+			sendCommand("", "online-users", fmt.Sprintf("%d", atomic.LoadInt64(&sessions)))
+		}()
+
 		var state = templates.Page{}
+
 		for {
 			select {
 			case <-sse.Context().Done():
@@ -111,8 +124,9 @@ func main() {
 					sse.PatchElementTempl(templates.Partial(state))
 				case "show-error":
 					sse.PatchElementTempl(templates.ToastError(cmd.Input))
+				case "online-users":
+					sse.PatchElementTempl(templates.ActiveUsers(atomic.LoadInt64(&sessions)))
 				}
-
 			}
 		}
 	})
@@ -123,6 +137,7 @@ func main() {
 			CorrelationID string `json:"correlationID"`
 		}
 		if err := datastar.ReadSignals(r, &signals); err != nil {
+			http.Error(w, "Failed to read signals", http.StatusBadRequest)
 			return
 		}
 		datastar.NewSSE(w, r)
@@ -139,6 +154,7 @@ func main() {
 			CorrelationID string `json:"correlationID"`
 		}
 		if err := datastar.ReadSignals(r, &signals); err != nil {
+			http.Error(w, "Failed to read signals", http.StatusBadRequest)
 			return
 		}
 		datastar.NewSSE(w, r)
