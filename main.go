@@ -104,7 +104,7 @@ func main() {
 		defer subPersonal.Unsubscribe()
 
 		atomic.AddInt64(&sessions, 1)
-		sse.PatchElementTempl(templates.ActiveUsers(atomic.LoadInt64(&sessions)))
+		sse.PatchElementTempl(templates.ActiveUsers(fmt.Sprintf("%d", atomic.LoadInt64(&sessions))))
 		sendCommand("", "online-users", fmt.Sprintf("%d", atomic.LoadInt64(&sessions)))
 		defer func() {
 			atomic.AddInt64(&sessions, -1)
@@ -125,7 +125,7 @@ func main() {
 				case "show-error":
 					sse.PatchElementTempl(templates.ToastError(cmd.Input))
 				case "online-users":
-					sse.PatchElementTempl(templates.ActiveUsers(atomic.LoadInt64(&sessions)))
+					sse.PatchElementTempl(templates.ActiveUsers(cmd.Input))
 				}
 			}
 		}
