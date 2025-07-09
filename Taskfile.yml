@@ -1,0 +1,59 @@
+# https://taskfile.dev
+
+version: '3'
+interval: 400ms
+
+env:
+  LOG_LEVEL: debug
+
+tasks:
+  templ:  
+    deps: 
+      - kill
+    env:
+      TEMPL_EXPERIMENT: rawgo
+    sources:
+      - "**/*.templ"
+    generates:
+      - "**/*_templ.go"
+    cmds:
+      - templ generate
+
+  kill:
+    method: none
+    cmds:
+      - echo "Killing all processes"
+      - pkill -f ./site || true
+  
+  site:
+    method: none
+    desc: build the site
+    env:
+      CGO_ENABLED: 0
+    deps:
+      # - npm
+      - templ
+    sources:
+      - "**/*.go"
+      - "**/*.md"
+      - "static/**/*"
+    generates:
+      - ./site
+    cmds:
+      - go mod tidy
+      - go build -o site .
+
+  
+  wip:
+    cmds:
+      - task: templ 
+      - git commit -am "WIP" 
+      - git push
+      - ssh itu-erelioakis "cd /root/templ_photo_app_dasboard && bash prod.sh && bash prod.sh"
+
+  default:
+    method: none
+    deps:
+      - task: site
+    cmds:
+      - ./site

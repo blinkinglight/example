@@ -1,0 +1,143 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+
+	"github.com/blinkinglight/example/templates"
+	"github.com/delaneyj/toolbelt/embeddednats"
+	"github.com/go-chi/chi/v5"
+	"github.com/nats-io/nats.go"
+	"github.com/starfederation/datastar/sdk/go/datastar"
+)
+
+type Command struct {
+	Action string `json:"action"`
+	Input  string `json:"input"`
+}
+
+func main() {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
+	ctx := context.Background()
+
+	ns, err := embeddednats.New(ctx, embeddednats.WithDirectory("./data/nats"), embeddednats.WithShouldClearData(true))
+	if err != nil {
+		panic(err)
+	}
+
+	nc, err := ns.Client()
+	if err != nil {
+		panic(err)
+	}
+
+	router := chi.NewMux()
+
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		templates.PageHome(templates.Page{}).Render(r.Context(), w)
+	})
+
+	router.Get("/pipe", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		sse := datastar.NewSSE(w, r)
+
+		var pipe = make(chan *Command)
+		sub, err := nc.Subscribe("data.pipe", func(msg *nats.Msg) {
+			var cmd *Command
+			json.Unmarshal(msg.Data, &cmd)
+			pipe <- cmd
+		})
+		if err != nil {
+			slog.Error("Failed to subscribe to data.pipe", "error", err)
+			sse.PatchElementTempl(templates.ToastError("Failed to subscribe to data.pipe"))
+			return
+		}
+
+		defer sub.Unsubscribe()
+		var state = templates.Page{}
+		for {
+			select {
+			case <-sse.Context().Done():
+				return
+
+			case cmd := <-pipe:
+				switch cmd.Action {
+				case "update-and-render-list":
+					state.List = append(state.List, cmd.Input)
+					sse.PatchElementTempl(templates.Partial(state))
+				case "show-error":
+					sse.PatchElementTempl(templates.ToastError(cmd.Input))
+				}
+
+			}
+		}
+	})
+
+	router.Post("/", func(w http.ResponseWriter, r *http.Request) {
+		var signals struct {
+			Input string `json:"input"`
+		}
+		if err := datastar.ReadSignals(r, &signals); err != nil {
+			sse := datastar.NewSSE(w, r)
+			sse.PatchElementTempl(templates.ToastError("Failed to read signals"))
+			return
+		}
+		if signals.Input == "" {
+			sse := datastar.NewSSE(w, r)
+			sse.PatchElementTempl(templates.ToastError("Input cannot be empty"))
+			return
+		}
+		cmd := &Command{
+			Action: "update-and-render-list",
+			Input:  signals.Input,
+		}
+
+		data, err := json.Marshal(cmd)
+		if err != nil {
+			slog.Error("Failed to marshal command", "error", err)
+			sse := datastar.NewSSE(w, r)
+			sse.PatchElementTempl(templates.ToastError("Failed to process command"))
+			return
+		}
+
+		if err := nc.Publish("data.pipe", data); err != nil {
+			slog.Error("Failed to publish command", "error", err)
+			sse := datastar.NewSSE(w, r)
+			sse.PatchElementTempl(templates.ToastError("Failed to publish command"))
+			return
+		}
+		datastar.NewSSE(w, r)
+	})
+
+	router.Post("/error", func(w http.ResponseWriter, r *http.Request) {
+		cmd := &Command{
+			Action: "show-error",
+			Input:  "This is an error message",
+		}
+		data, err := json.Marshal(cmd)
+		if err != nil {
+			slog.Error("Failed to marshal error command", "error", err)
+			sse := datastar.NewSSE(w, r)
+			sse.PatchElementTempl(templates.ToastError("Failed to process error command"))
+			return
+		}
+
+		if err := nc.Publish("data.pipe", data); err != nil {
+			slog.Error("Failed to publish error command", "error", err)
+			sse := datastar.NewSSE(w, r)
+			sse.PatchElementTempl(templates.ToastError("Failed to publish error command"))
+			return
+		}
+		datastar.NewSSE(w, r)
+
+	})
+
+	slog.Info("Starting server on :9999")
+	if err := http.ListenAndServe(":9999", router); err != nil {
+		slog.Error("Failed to start server", "error", err)
+		return
+	}
+	slog.Info("Server stopped")
+}

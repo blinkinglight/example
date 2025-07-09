@@ -1,0 +1,64 @@
+package templates
+
+import "fmt"
+import "time"
+
+type Page struct {
+	List []string
+}
+
+templ LaytouMain() {
+	<html>
+		<head>
+			<title>My Application</title>
+		</head>
+		<script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@release-candidate/bundles/datastar.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<style>
+			/* Toast disappear animation */
+			@keyframes toast-fadeout {
+				0%   { opacity: 1; transform: translateY(0);}
+				80%  { opacity: 1; }
+				100% { opacity: 0; transform: translateY(-10px);}
+			}
+			.toast-animate {
+				animation: toast-fadeout 3s forwards;
+			}
+	</style>
+		<body>
+			{ children... }
+			<div id="toast"></div>
+		</body>
+	</html>
+}
+
+templ PageHome(page Page) {
+	@LaytouMain() {
+		<div class="container mx-auto w-[400px] p-4">
+
+		<h1>Welcome to My Application</h1>
+		<p>Type something and press enter</p>
+		<input type="text" placeholder="Type something ..." data-bind="input" data-on-keydown="evt.key == 'Enter' && (@post('/'), $input='')" class="border-1 border-red-300"/>
+		<button data-on-click="@post('/error')" class="bg-blue-500 text-white px-4 py-2 rounded">Show error</button>
+		<div data-on-load="@get('/pipe')">
+			@Partial(page)
+		</div>
+		</div>
+	}
+}
+
+templ Partial(page Page) {
+	<ul id="list">
+		for _, item := range page.List {
+			<li>{ item }</li>
+		}
+	</ul>
+}
+
+templ ToastError(message string) {
+	<div class="fixed top-6 right-6 z-50" id="toast">
+		<div class="toast-animate bg-gray-900 text-white px-6 py-3 rounded-xl shadow-lg" id={ fmt.Sprintf("toast-%d", time.Now().UnixNano()) }>
+			<span>❌ { message }!</span>
+		</div>
+	</div>
+}
