@@ -40,13 +40,6 @@ templ LaytouMain() {
 			}
 			
 	</style>
-		<style>
- 
-  ::view-transition-old(flash-it),
-  ::view-transition-new(flash-it) { 
-	animation: flash 2s ease-in-out;
-   }
-</style>
 		<body data-signals={ fmt.Sprintf(`{ "correlationID": "%s" }`, nuid.Next()) }>
 			@ActiveUsers("0")
 			{ children... }
