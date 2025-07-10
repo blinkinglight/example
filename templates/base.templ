@@ -1,11 +1,13 @@
 package templates
 
 import "fmt"
-import "time"
+
+// import "time"
 import "github.com/nats-io/nuid"
 
 type Page struct {
-	List []string
+	List   []string
+	Matrix [5][5]int
 }
 
 templ LaytouMain() {
@@ -22,11 +24,30 @@ templ LaytouMain() {
 				80%  { opacity: 1; }
 				100% { opacity: 0; transform: translateY(-10px);}
 			}
+			@keyframes flash {
+				0%, 100% {
+					opacity: 1;
+				}
+				25%, 75% {
+					opacity: 0;
+				}
+			}
 			.toast-animate {
 				animation: toast-fadeout 3s forwards;
 			}
+			.flash {
+			  animation: flash 2s ease-in-out;
+			}
+			
 	</style>
-		<body data-signals={ fmt.Sprintf(`{ "correlationID": "%s" }`, nuid.Next() ) }>
+		<style>
+ 
+  ::view-transition-old(flash-it),
+  ::view-transition-new(flash-it) { 
+	animation: flash 2s ease-in-out;
+   }
+</style>
+		<body data-signals={ fmt.Sprintf(`{ "correlationID": "%s" }`, nuid.Next()) }>
 			@ActiveUsers("0")
 			{ children... }
 			<div id="toast"></div>
@@ -36,15 +57,20 @@ templ LaytouMain() {
 
 templ PageHome(page Page) {
 	@LaytouMain() {
-		<div class="container mx-auto w-[400px] p-4">
-
-		<h1>Welcome to My Application</h1>
-		<p>Type something and press enter</p>
-		<input type="text" placeholder="Type something ..." data-bind="input" data-on-keydown="evt.key == 'Enter' && (@post('/'), $input='')" class="border-1 border-red-300"/>
-		<button data-on-click="@post('/error')" class="bg-blue-500 text-white px-4 py-2 rounded">Show error</button>
-		<div data-on-load="@get('/pipe')">
-			@Partial(page)
-		</div>
+		<div class="container mx-auto w-[400px] p-4" >
+			<h1>Welcome to My Application</h1>
+			<p>Type something and press enter</p>
+			<input type="text" placeholder="Type something ..." data-bind="input" data-on-keydown="evt.key == 'Enter' && (@post('/'), $input='')" class="border-1 border-red-300"/>
+			<button data-on-click="@post('/error')" class="bg-blue-500 text-white px-4 py-2 rounded">Show error</button>
+			<div data-on-load="@get('/pipe')">
+				@Partial(page)
+			</div>
+			<div class="p-4">
+				@ProgressBar(0)
+			</div>
+			<div>
+				@Table5x5(page.Matrix)
+			</div>
 		</div>
 	}
 }
@@ -67,8 +93,44 @@ templ ActiveUsers(count string) {
 
 templ ToastError(message string) {
 	<div class="fixed top-6 right-6 z-50" id="toast">
-		<div class="toast-animate bg-gray-900 text-white px-6 py-3 rounded-xl shadow-lg" id={ fmt.Sprintf("toast-%d", time.Now().UnixNano()) }>
+		<div class="toast-animate bg-gray-900 text-white px-6 py-3 rounded-xl shadow-lg">
 			<span>❌ { message }!</span>
 		</div>
+	</div>
+}
+
+// table 5x5 with from [5][5]int
+templ Table5x5(matrix [5][5]int) {
+	<table class="table-auto w-full" id="table" view-transition-name="flash-it">
+		<thead>
+			<tr>
+				for i := 0; i < 5; i++ {
+					<th class="px-4 py-2">Header { i + 1 }</th>
+				}
+			</tr>
+		</thead>
+		<tbody>
+			for i := 0; i < 5; i++ {
+				<tr id={ fmt.Sprintf("row-%d", i) } view-transition-name="flash-it">
+					for j := 0; j < 5; j++ {
+						<td
+							view-transition-name="flash-it"
+							id={ fmt.Sprintf("cell-%d-%d", i, j) }
+							class="border px-4 py-2"
+						>
+							<span view-transition-name="flash-it">
+								Cell { matrix[i][j ] }
+							</span>
+						</td>
+					}
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+templ ProgressBar(progress int) {
+	<div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" id="progress-bar">
+		<div class="bg-blue-600 h-2.5 rounded-full" style={ fmt.Sprintf("width: %d%%", progress)}></div>
 	</div>
 }

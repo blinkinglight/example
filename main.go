@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"sync/atomic"
+	"time"
 
 	"github.com/blinkinglight/example/templates"
 	"github.com/delaneyj/toolbelt/embeddednats"
@@ -113,19 +115,35 @@ func main() {
 
 		var state = templates.Page{}
 
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		var progress int = 0
 		for {
 			select {
 			case <-sse.Context().Done():
 				return
+			case <-ticker.C:
+				sendCommand(signals.CorrelationID, "render-table", "")
+				progress++
+				sse.PatchElementTempl(templates.ProgressBar(progress))
+				if progress > 100 {
+					progress = 0
+				}
 			case cmd := <-pipe:
 				switch cmd.Action {
 				case "update-and-render-list":
 					state.List = append(state.List, cmd.Input)
 					sse.PatchElementTempl(templates.Partial(state))
 				case "show-error":
-					sse.PatchElementTempl(templates.ToastError(cmd.Input))
+					sse.PatchElementTempl(templates.ToastError(cmd.Input), datastar.WithModeReplace())
 				case "online-users":
 					sse.PatchElementTempl(templates.ActiveUsers(cmd.Input))
+				case "render-table":
+					state.Matrix[1][1] = rand.Intn(100)
+					state.Matrix[rand.Intn(4)][rand.Intn(4)] = rand.Intn(100)
+					state.Matrix[1][1] = rand.Intn(100)
+					sse.PatchElementTempl(templates.Table5x5(state.Matrix))
 				}
 			}
 		}
