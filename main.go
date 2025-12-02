@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 type Command struct {
 	Action string `json:"action"`
 	Input  string `json:"input"`
+	ID     string `json:"id,omitempty"`
 }
 
 var sessions int64
@@ -39,10 +41,11 @@ func main() {
 		panic(err)
 	}
 
-	sendCommand := func(correlationID, action, input string) error {
+	sendCommand := func(correlationID, action, input, id string) error {
 		cmd := &Command{
 			Action: action,
 			Input:  input,
+			ID:     id,
 		}
 		data, err := json.Marshal(cmd)
 		if err != nil {
@@ -107,10 +110,10 @@ func main() {
 
 		atomic.AddInt64(&sessions, 1)
 		sse.PatchElementTempl(templates.ActiveUsers(fmt.Sprintf("%d", atomic.LoadInt64(&sessions))))
-		sendCommand("", "online-users", fmt.Sprintf("%d", atomic.LoadInt64(&sessions)))
+		sendCommand("", "online-users", fmt.Sprintf("%d", atomic.LoadInt64(&sessions)), "")
 		defer func() {
 			atomic.AddInt64(&sessions, -1)
-			sendCommand("", "online-users", fmt.Sprintf("%d", atomic.LoadInt64(&sessions)))
+			sendCommand("", "online-users", fmt.Sprintf("%d", atomic.LoadInt64(&sessions)), "")
 		}()
 
 		var state = templates.Page{}
@@ -124,7 +127,7 @@ func main() {
 			case <-sse.Context().Done():
 				return
 			case <-ticker.C:
-				sendCommand(signals.CorrelationID, "render-table", "")
+				sendCommand(signals.CorrelationID, "render-table", "", "")
 				progress++
 				sse.PatchElementTempl(templates.ProgressBar(progress))
 				if progress > 100 {
@@ -137,6 +140,8 @@ func main() {
 					sse.PatchElementTempl(templates.Partial(state))
 				case "show-error":
 					sse.PatchElementTempl(templates.ToastError(cmd.Input), datastar.WithModeReplace())
+				case "show-error-inline":
+					sse.PatchElementTempl(templates.Error(cmd.Input, cmd.ID), datastar.WithModeReplace())
 				case "online-users":
 					sse.PatchElementTempl(templates.ActiveUsers(cmd.Input))
 				case "render-table":
@@ -161,10 +166,10 @@ func main() {
 		datastar.NewSSE(w, r)
 
 		if signals.Input == "" {
-			sendCommand(signals.CorrelationID, "show-error", "Input cannot be empty")
+			sendCommand(signals.CorrelationID, "show-error", "Input cannot be empty", "")
 			return
 		}
-		sendCommand("", "update-and-render-list", signals.Input)
+		sendCommand("", "update-and-render-list", signals.Input, "")
 	})
 
 	router.Post("/error", func(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +181,52 @@ func main() {
 			return
 		}
 		datastar.NewSSE(w, r)
-		sendCommand(signals.CorrelationID, "show-error", "This is a test error message")
+		sendCommand(signals.CorrelationID, "show-error", "This is a test error message", "")
+	})
+
+	router.Post("/form", func(w http.ResponseWriter, r *http.Request) {
+		var signals struct {
+			Name          string `json:"name"`
+			Email         string `json:"email"`
+			CorrelationID string `json:"correlationID"`
+		}
+		if err := datastar.ReadSignals(r, &signals); err != nil {
+			http.Error(w, "Failed to read signals", http.StatusBadRequest)
+			return
+		}
+		datastar.NewSSE(w, r)
+		time.Sleep(5 * time.Second)
+
+	})
+
+	router.Post("/validate", func(w http.ResponseWriter, r *http.Request) {
+		var signals struct {
+			Email         string `json:"email"`
+			CorrelationID string `json:"correlationID"`
+		}
+		if err := datastar.ReadSignals(r, &signals); err != nil {
+			http.Error(w, "Failed to read signals", http.StatusBadRequest)
+			return
+		}
+		datastar.NewSSE(w, r)
+		if signals.Email == "" {
+			slog.Error("Email is empty", "correlationID", signals.CorrelationID)
+			sendCommand(signals.CorrelationID, "show-error-inline", "Email cannot be empty", "error-email")
+			return
+		}
+		if len(signals.Email) < 5 {
+			slog.Error("Email is empty", "correlationID", signals.CorrelationID)
+			sendCommand(signals.CorrelationID, "show-error-inline", "Email cannot be empty", "error-email")
+			return
+		}
+		if strings.Contains(signals.Email, "@") {
+			slog.Info("Email is valid", "email", signals.Email, "correlationID", signals.CorrelationID)
+			sendCommand(signals.CorrelationID, "show-error-inline", "Email is valid", "error-email")
+			return
+		}
+
+		sendCommand(signals.CorrelationID, "show-error-inline", "", "error-email")
+
 	})
 
 	slog.Info("Starting server on :9999")
@@ -185,4 +235,27 @@ func main() {
 		return
 	}
 	slog.Info("Server stopped")
+}
+
+type HomePage struct {
+	Title string `json:"title"`
+
+	Data []string `json:"data"`
+
+	Matrix [][]int `json:"matrix"`
+}
+
+func NewA() {
+	page := &HomePage{
+		Title: "Hello, World!",
+		Data:  []string{},
+		Matrix: [][]int{
+			{1, 2, 3, 4, 5},
+			{6, 7, 8, 9, 10},
+			{11, 12, 13, 14, 15},
+			{16, 17, 18, 19, 20},
+			{21, 22, 23, 24, 25},
+		},
+	}
+	_ = page
 }

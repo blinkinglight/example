@@ -15,20 +15,31 @@ templ LaytouMain() {
 		<head>
 			<title>My Application</title>
 		</head>
-		<script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@release-candidate/bundles/datastar.js"></script>
+		// <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@release-candidate/bundles/datastar.js"></script>
+		<script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@1.0.0-RC.6/bundles/datastar.js"></script>
 		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 		<style>
 			/* Toast disappear animation */
 			@keyframes toast-fadeout {
-				0%   { opacity: 1; transform: translateY(0);}
-				80%  { opacity: 1; }
-				100% { opacity: 0; transform: translateY(-10px);}
-			}
-			@keyframes flash {
-				0%, 100% {
+				0% {
+					opacity: 1;
+					transform: translateY(0);
+				}
+				80% {
 					opacity: 1;
 				}
-				25%, 75% {
+				100% {
+					opacity: 0;
+					transform: translateY(-10px);
+				}
+			}
+			@keyframes flash {
+				0%,
+				100% {
+					opacity: 1;
+				}
+				25%,
+				75% {
 					opacity: 0;
 				}
 			}
@@ -36,10 +47,13 @@ templ LaytouMain() {
 				animation: toast-fadeout 3s forwards;
 			}
 			.flash {
-			  animation: flash 2s ease-in-out;
+				animation: flash 2s ease-in-out;
 			}
-			
-	</style>
+			input:disabled {
+				background-color: #f3f4f6; /* Tailwind's gray-200 */
+				cursor: not-allowed;
+			}
+		</style>
 		<body data-signals={ fmt.Sprintf(`{ "correlationID": "%s" }`, nuid.Next()) }>
 			@ActiveUsers("0")
 			{ children... }
@@ -50,12 +64,12 @@ templ LaytouMain() {
 
 templ PageHome(page Page) {
 	@LaytouMain() {
-		<div class="container mx-auto w-[400px] p-4" >
+		<div class="container mx-auto w-[400px] p-4">
 			<h1>Welcome to My Application</h1>
 			<p>Type something and press enter</p>
 			<input type="text" placeholder="Type something ..." data-bind="input" data-on-keydown="evt.key == 'Enter' && (@post('/'), $input='')" class="border-1 border-red-300"/>
-			<button data-on-click="@post('/error')" class="bg-blue-500 text-white px-4 py-2 rounded">Show error</button>
-			<div data-on-load="@get('/pipe')">
+			<button data-on:click="@post('/error')" class="bg-blue-500 text-white px-4 py-2 rounded">Show error</button>
+			<div data-init="@get('/pipe')">
 				@Partial(page)
 			</div>
 			<div class="p-4">
@@ -63,6 +77,9 @@ templ PageHome(page Page) {
 			</div>
 			<div>
 				@Table5x5(page.Matrix)
+			</div>
+			<div>
+				@Form()
 			</div>
 		</div>
 	}
@@ -124,6 +141,22 @@ templ Table5x5(matrix [5][5]int) {
 
 templ ProgressBar(progress int) {
 	<div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700" id="progress-bar">
-		<div class="bg-blue-600 h-2.5 rounded-full" style={ fmt.Sprintf("width: %d%%", progress)}></div>
+		<div class="bg-blue-600 h-2.5 rounded-full" style={ fmt.Sprintf("width: %d%%", progress) }></div>
+	</div>
+}
+
+templ Form() {
+	<div id="form" class="flex flex-col gap-4 p-4" data-signals-fetching="false" data->
+		<input data-attr-disabled="$fetching" data-bind="name" type="text" name="name" placeholder="Name" class="border-1 border-red-300 p-2 rounded" required/>
+		<div id="error-name"></div>
+		<input data-on-keydown="@post('/validate')" data-attr-disabled="$fetching" data-bind="email" type="email" name="email" placeholder="Email" class="border-1 border-red-300 p-2 rounded" required/>
+		<div id="error-email"></div>
+		<button data-indicator-fetching data-on-click="@post('/form')" type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Submit</button>
+	</div>
+}
+
+templ Error(message string, id string) {
+	<div class="bg-red-500 text-white px-6 py-3 rounded-xl shadow-lg" id={ id }>
+		<span>❌ { message }!</span>
 	</div>
 }
